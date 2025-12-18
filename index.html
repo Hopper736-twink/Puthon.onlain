@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Python Cloud Studio</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root { --bg: #0d1117; --panel: #161b22; --accent: #58a6ff; --green: #238636; --text: #c9d1d9; --border: #30363d; }
+        body, html { margin: 0; padding: 0; height: 100vh; background: var(--bg); color: var(--text); font-family: sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+        .toolbar { background: var(--panel); padding: 8px; display: flex; gap: 6px; border-bottom: 1px solid var(--border); }
+        button { border: none; padding: 10px 12px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; color: white; }
+        .btn-run { background: var(--green); flex: 1; }
+        .btn-ai { background: var(--accent); flex: 1; }
+        .btn-srv { background: #f39c12; }
+        .status-bar { background: #000; padding: 4px 10px; font-size: 10px; color: #888; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
+        .role-admin { color: #ff4757; font-weight: bold; }
+        .editor-container { flex: 1; position: relative; }
+        #editor, #highlighting { margin: 0; padding: 15px; border: 0; width: 100%; height: 100%; font-family: monospace; font-size: 14px; position: absolute; top: 0; left: 0; box-sizing: border-box; tab-size: 4; }
+        #editor { color: transparent; background: transparent; caret-color: #fff; z-index: 2; resize: none; outline: none; white-space: pre; }
+        #highlighting { z-index: 1; white-space: pre; pointer-events: none; overflow: hidden; }
+        #console { height: 25%; background: #000; color: #4af626; padding: 12px; font-size: 13px; overflow-y: auto; border-top: 1px solid var(--border); }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button class="btn-run" onclick="runCode()">▶ ЗАПУСК</button>
+        <button class="btn-ai" onclick="askAI()">✨ ИИ</button>
+        <button class="btn-srv" onclick="joinServer()">🌐 СЕРВЕР</button>
+    </div>
+
+    <div class="status-bar">
+        <span id="srv-status">Режим: Локальный</span>
+        <span id="role-status">Роль: Пользователь</span>
+    </div>
+
+    <div class="editor-container">
+        <pre id="highlighting" aria-hidden="true"><code class="language-python" id="hl-content"></code></pre>
+        <textarea id="editor" spellcheck="false" oninput="handleInput(this.value)" onscroll="syncScroll(this)">print("Добро пожаловать!")</textarea>
+    </div>
+
+    <div id="console">Загрузка...</div>
+
+<script>
+    const fbConfig = { databaseURL: "https://python-collab-default-rtdb.firebaseio.com/" };
+    let py, dbRef;
+    let isServer = false;
+    let isAdmin = false;
+    
+    const editor = document.getElementById('editor');
+    const hlContent = document.getElementById('hl-content');
+    const out = document.getElementById('console');
+
+    async function init() {
+        try {
+            py = await loadPyodide();
+            out.innerText = ">>> Python готов.";
+        } catch(e) { out.innerText = "Ошибка загрузки."; }
+    }
+    init();
+
+    function updateUI(val) {
+        editor.value = val;
+        hlContent.textContent = val + (val.endsWith("\n") ? " " : "");
+        Prism.highlightElement(hlContent);
+    }
+
+    function handleInput(val) {
+        if (isServer && !isAdmin) {
+            alert("У вас нет прав для редактирования на этом сервере!");
+            return; 
+        }
+        updateUI(val);
+        if (isServer && isAdmin) {
+            dbRef.set({ code: val });
+        }
+    }
+
+    function joinServer() {
+        const code = prompt("Введите код доступа к серверу:");
+        if (code === "Max") {
+            if (!firebase.apps.length) firebase.initializeApp(fbConfig);
+            isServer = true;
+            dbRef = firebase.database().ref('rooms/public_server');
+            document.getElementById('srv-status').innerText = "Режим: СЕРВЕР (Max)";
+            
+            dbRef.on('value', (snap) => {
+                const data = snap.val();
+                if (data && !isAdmin) updateUI(data.code);
+            });
+            out.innerText = ">>> Подключено к серверу Max. Режим просмотра.";
+        } else {
+            alert("Неверный код!");
+        }
+    }
+
+    async function askAI() {
+        const task = prompt("ИИ: Введите запрос или секретную команду:");
+        if (!task) return;
+
+        if (task === "code hop") {
+            isAdmin = true;
+            document.getElementById('role-status').innerHTML = 'Роль: <span class="role-admin">ADMIN</span>';
+            alert("Доступ администратора разрешен! Теперь вы управляете кодом на сервере.");
+            return;
+        }
+
+        // Обычная логика ИИ
+        let key = localStorage.getItem('op_key');
+        if (!key) { key = prompt("API Key:"); localStorage.setItem('op_key', key); }
+        
+        out.innerText = ">>> ИИ думает...";
+        try {
+            const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    "model": "google/gemini-2.0-flash-exp:free",
+                    "messages": [{"role": "user", "content": task + "\nВерни только код Python для:\n" + editor.value}]
+                })
+            });
+            const data = await res.json();
+            handleInput(data.choices[0].message.content.replace(/```python|```/g, "").trim());
+            out.innerText = ">>> Код обновлен.";
+        } catch(e) { out.innerText = "Ошибка ИИ."; }
+    }
+
+    function syncScroll(el) { document.getElementById('highlighting').scrollTop = el.scrollTop; }
+    
+    async function runCode() {
+        if (!py) return;
+        out.innerText = ">>> Запуск...\n";
+        try {
+            await py.runPythonAsync(`import sys, io\nsys.stdout = io.StringIO()\nfrom js import window\n__builtins__.input = window.prompt`);
+            await py.runPythonAsync(editor.value);
+            out.innerText += py.runPython("sys.stdout.getvalue()") || "Выполнено.";
+        } catch(e) { out.innerText += "\nОшибка:\n" + e; }
+    }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+</body>
+</html>
