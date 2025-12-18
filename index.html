@@ -3,49 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Python Cloud Studio FIXED</title>
+    <title>Python P2P Studio</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <style>
         :root { --bg: #0d1117; --panel: #161b22; --accent: #58a6ff; --green: #238636; --text: #c9d1d9; --border: #30363d; }
-        
         * { box-sizing: border-box; }
         body, html { margin: 0; padding: 0; height: 100vh; background: var(--bg); color: var(--text); font-family: sans-serif; overflow: hidden; display: flex; flex-direction: column; }
-        
         .toolbar { background: var(--panel); padding: 8px; display: flex; gap: 6px; border-bottom: 1px solid var(--border); }
-        button { border: none; padding: 10px 12px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; color: white; }
+        button { border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 11px; cursor: pointer; color: white; }
         .btn-run { background: var(--green); flex: 1; }
         .btn-ai { background: var(--accent); flex: 1; }
-        .btn-srv { background: #f39c12; }
-
+        .btn-srv { background: #f39c12; flex: 1; }
         .status-bar { background: #000; padding: 4px 10px; font-size: 10px; color: #888; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
-        .role-admin { color: #ff4757; font-weight: bold; }
-
-        /* ИСПРАВЛЕННЫЙ РЕДАКТОР */
-        .editor-container { flex: 1; position: relative; background: var(--bg); overflow: hidden; }
-        
-        /* Общий стиль для текста и подсветки */
-        #editor, #highlighting {
-            margin: 0; padding: 20px; border: 0; width: 100%; height: 100%;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
-            font-size: 16px !important; line-height: 1.5 !important;
-            position: absolute; top: 0; left: 0;
-            white-space: pre !important; word-spacing: normal !important;
-            word-break: normal !important; tab-size: 4;
-        }
-
-        #editor {
-            color: transparent !important; background: transparent !important;
-            caret-color: #fff !important; z-index: 2; resize: none; outline: none;
-            overflow: auto; -webkit-text-fill-color: transparent;
-        }
-
+        .editor-container { flex: 1; position: relative; background: var(--bg); }
+        #editor, #highlighting { margin: 0; padding: 15px; border: 0; width: 100%; height: 100%; font-family: monospace; font-size: 16px; line-height: 1.5; position: absolute; top: 0; left: 0; white-space: pre; tab-size: 4; }
+        #editor { color: transparent; background: transparent; caret-color: #fff; z-index: 2; resize: none; outline: none; overflow: auto; -webkit-text-fill-color: transparent; }
         #highlighting { z-index: 1; pointer-events: none; overflow: hidden; }
-        #hl-content { font-family: inherit !important; font-size: inherit !important; }
-
-        #console { height: 25%; background: #000; color: #4af626; padding: 12px; font-family: monospace; font-size: 13px; overflow-y: auto; border-top: 2px solid var(--border); }
+        #console { height: 25%; background: #000; color: #4af626; padding: 12px; font-size: 13px; overflow-y: auto; border-top: 1px solid var(--border); }
     </style>
 </head>
 <body>
@@ -57,90 +33,113 @@
     </div>
 
     <div class="status-bar">
-        <span id="srv-status">Режим: Локальный</span>
+        <span id="srv-status">ID: Генерирую...</span>
         <span id="role-status">Роль: Пользователь</span>
     </div>
 
     <div class="editor-container">
         <pre id="highlighting" aria-hidden="true"><code class="language-python" id="hl-content"></code></pre>
-        <textarea id="editor" spellcheck="false" oninput="handleInput(this.value)" onscroll="syncScroll(this)">print("Баг исправлен!")</textarea>
+        <textarea id="editor" spellcheck="false" oninput="handleInput(this.value)" onscroll="syncScroll(this)">print("Система P2P готова")</textarea>
     </div>
 
-    <div id="console">Загрузка...</div>
+    <div id="console">Загрузка Python...</div>
 
 <script>
-    // Используй свою ссылку Firebase здесь для синхронизации
-    const fbConfig = { databaseURL: "https://python-collab-default-rtdb.firebaseio.com/" };
-    let py, dbRef;
-    let isServer = false;
+    let py, peer, conn;
     let isAdmin = false;
-    
     const editor = document.getElementById('editor');
-    const hlContent = document.getElementById('hl-content');
-    const highlighting = document.getElementById('highlighting');
     const out = document.getElementById('console');
 
+    // 1. Инициализация Python
     async function init() {
         try {
             py = await loadPyodide();
             out.innerText = ">>> Python готов.";
             updateUI(editor.value);
+            initPeer();
         } catch(e) { out.innerText = "Ошибка загрузки."; }
     }
     init();
 
-    function updateUI(val) {
-        editor.value = val;
-        // Добавляем пробел в конце для корректного скролла
-        hlContent.textContent = val + (val.endsWith("\n") ? " " : "");
-        Prism.highlightElement(hlContent);
-    }
+    // 2. Логика P2P Сервера
+    function initPeer() {
+        // Создаем ID сервера на основе кодового слова Max
+        peer = new Peer('python-server-max-' + Math.floor(Math.random()*100));
+        
+        peer.on('open', (id) => {
+            document.getElementById('srv-status').innerText = "ID: " + id;
+        });
 
-    function handleInput(val) {
-        if (isServer && !isAdmin) {
-            // Если не админ, возвращаем старое значение
-            dbRef.once('value', (s) => updateUI(s.val().code));
-            alert("Вы только зритель!");
-            return; 
-        }
-        updateUI(val);
-        if (isServer && isAdmin) {
-            dbRef.set({ code: val });
-        }
-    }
-
-    function syncScroll(el) {
-        highlighting.scrollTop = el.scrollTop;
-        highlighting.scrollLeft = el.scrollLeft;
+        peer.on('connection', (c) => {
+            conn = c;
+            conn.on('data', (data) => {
+                if (!isAdmin) updateUI(data);
+            });
+        });
     }
 
     function joinServer() {
-        const code = prompt("Код доступа:");
+        const code = prompt("Введите ID сервера (или 'Max' для авто-поиска):");
         if (code === "Max") {
-            if (!firebase.apps.length) firebase.initializeApp(fbConfig);
-            isServer = true;
-            dbRef = firebase.database().ref('rooms/public_server');
-            document.getElementById('srv-status').innerText = "Режим: СЕРВЕР (Max)";
-            
-            dbRef.on('value', (snap) => {
-                const data = snap.val();
-                if (data && !isAdmin) updateUI(data.code);
+            const targetId = prompt("Введите полный ID (из строки статуса друга):");
+            conn = peer.connect(targetId);
+            conn.on('open', () => {
+                out.innerText = ">>> Подключено к " + targetId;
+                conn.on('data', (data) => { if(!isAdmin) updateUI(data); });
             });
-            out.innerText = ">>> Подключено. Ждите действий админа.";
         }
     }
 
-    async function askAI() {
-        const task = prompt("Запрос или команда:");
-        if (!task) return;
-        if (task === "code hop") {
-            isAdmin = true;
-            document.getElementById('role-status').innerHTML = 'Роль: <span class="role-admin">ADMIN</span>';
+    // 3. Управление кодом
+    function updateUI(val) {
+        editor.value = val;
+        document.getElementById('hl-content').textContent = val + (val.endsWith("\n") ? " " : "");
+        Prism.highlightElement(document.getElementById('hl-content'));
+    }
+
+    function handleInput(val) {
+        if (conn && !isAdmin && peer.connections.length > 0) {
+            updateUI(editor.value); // Откат если не админ
             return;
         }
-        // Тут твоя обычная логика ИИ...
+        updateUI(val);
+        if (isAdmin && conn) conn.send(val);
     }
 
+    // 4. ИИ с фиксом
+    async function askAI() {
+        const task = prompt("ИИ: code hop (админ) или ваш запрос:");
+        if (task === "code hop") {
+            isAdmin = true;
+            document.getElementById('role-status').innerText = "Роль: ADMIN";
+            return;
+        }
+
+        let key = localStorage.getItem('op_key_vfinal');
+        if (!key) { key = prompt("Вставьте API Key:"); localStorage.setItem('op_key_vfinal', key); }
+
+        out.innerText = ">>> ИИ думает...";
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: { 
+                    "Authorization": `Bearer ${key}`,
+                    "Content-Type": "application/json" 
+                },
+                body: JSON.stringify({
+                    "model": "google/gemini-2.0-flash-exp:free",
+                    "messages": [{"role": "user", "content": task + "\nПиши ТОЛЬКО код Python без пояснений:\n" + editor.value}]
+                })
+            });
+            const data = await response.json();
+            const newCode = data.choices[0].message.content.replace(/```python|```/g, "").trim();
+            handleInput(newCode);
+            out.innerText = ">>> Код обновлен.";
+        } catch(e) { out.innerText = "Ошибка ИИ. Проверь ключ."; }
+    }
+
+    function syncScroll(el) { document.getElementById('highlighting').scrollTop = el.scrollTop; }
+    
     async function runCode() {
         if (!py) return;
         out.innerText = ">>> Запуск...\n";
