@@ -7,51 +7,56 @@
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.4.7/dist/peerjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
-<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css"/>
 
 <style>
-:root {
-  --bg:#0d1117; --panel:#161b22; --accent:#58a6ff;
-  --green:#238636; --border:#30363d; --text:#c9d1d9;
+:root{
+  --bg:#0d1117;--panel:#161b22;--accent:#58a6ff;
+  --green:#238636;--border:#30363d;--text:#c9d1d9;
 }
 *{box-sizing:border-box}
 body{
-  margin:0; background:var(--bg); color:var(--text);
-  font-family:system-ui; height:100vh; display:flex; flex-direction:column;
+  margin:0;background:var(--bg);color:var(--text);
+  font-family:system-ui;height:100vh;display:flex;flex-direction:column;
 }
-.toolbar{
-  display:flex; gap:6px; padding:8px; background:var(--panel);
-}
+.toolbar{display:flex;gap:6px;padding:8px;background:var(--panel)}
 button{
-  flex:1; padding:12px; border:0; border-radius:8px;
-  font-weight:600; color:#fff; cursor:pointer;
+  flex:1;padding:12px;border:0;border-radius:8px;
+  font-weight:600;color:#fff;cursor:pointer
 }
 .run{background:var(--green)}
 .ai{background:var(--accent)}
 .net{background:#f39c12}
 
 .status{
-  padding:6px 12px; font-size:12px;
-  display:flex; justify-content:space-between;
-  border-bottom:1px solid var(--border);
+  padding:6px 12px;font-size:12px;
+  display:flex;justify-content:space-between;
+  border-bottom:1px solid var(--border)
 }
 
-.editor-wrap{flex:1; position:relative}
-textarea, pre{
-  margin:0; padding:14px; width:100%; height:100%;
-  font-family:monospace; font-size:15px; line-height:1.5;
+.editor{
+  flex:1;position:relative;
+  font-family:monospace;font-size:15px;line-height:1.5;
+}
+textarea,pre{
+  position:absolute;top:0;left:0;
+  width:100%;height:100%;
+  margin:0;padding:14px;
+  font-family:inherit;font-size:inherit;line-height:inherit;
+  white-space:pre-wrap;word-wrap:break-word;
 }
 textarea{
-  background:transparent; color:transparent;
-  caret-color:#fff; position:absolute; z-index:2;
-  border:0; resize:none; outline:none;
+  background:transparent;color:transparent;
+  caret-color:#fff;z-index:2;
+  border:0;outline:none;resize:none;
 }
 pre{
-  position:absolute; z-index:1; overflow:auto;
+  z-index:1;overflow:auto;
 }
+
 .console{
-  height:25%; background:#000; color:#4af626;
-  padding:10px; font-size:13px; overflow:auto;
+  height:25%;background:#000;color:#4af626;
+  padding:10px;font-size:13px;overflow:auto
 }
 </style>
 </head>
@@ -60,7 +65,7 @@ pre{
 
 <div class="toolbar">
   <button class="run" onclick="runCode()">▶ Запуск</button>
-  <button class="ai" onclick="localAI()">🧠 Local AI</button>
+  <button class="ai" onclick="smartAI()">🧠 Smart AI</button>
   <button class="net" onclick="connect()">🌐 Сервер</button>
 </div>
 
@@ -69,9 +74,9 @@ pre{
   <span id="role">Роль: —</span>
 </div>
 
-<div class="editor-wrap">
-<pre><code id="hl" class="language-python"></code></pre>
-<textarea id="ed">print("Python P2P Studio готов")</textarea>
+<div class="editor">
+  <pre><code id="hl" class="language-python"></code></pre>
+  <textarea id="ed">print("Python P2P Studio готов")</textarea>
 </div>
 
 <div class="console" id="out">Загрузка Python...</div>
@@ -80,28 +85,32 @@ pre{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
 
 <script>
-let py, peer, conns=[], isHost=false;
-const ed=document.getElementById("ed");
+let py,peer,conns=[],isHost=false;
+const ed=ed=document.getElementById("ed");
 const hl=document.getElementById("hl");
 const out=document.getElementById("out");
 
-function sync(){
+function highlight(){
   hl.textContent=ed.value+"\n";
   Prism.highlightElement(hl);
 }
-ed.oninput=()=>{ if(isHost) broadcast(ed.value); sync(); };
+ed.addEventListener("input",()=>{highlight(); if(isHost)sendAll(ed.value)});
+ed.addEventListener("scroll",()=>{
+  hl.parentElement.scrollTop=ed.scrollTop;
+  hl.parentElement.scrollLeft=ed.scrollLeft;
+});
 
 async function init(){
   py=await loadPyodide();
   out.textContent=">>> Python готов";
-  sync();
+  highlight();
 }
 init();
 
 /* ---------- P2P ---------- */
 function connect(){
-  const mode=prompt("host / join?");
-  if(mode==="host"){
+  const m=prompt("host / join?");
+  if(m==="host"){
     isHost=true;
     const id="room-"+Math.random().toString(36).slice(2,8);
     peer=new Peer(id);
@@ -112,43 +121,56 @@ function connect(){
       c.on("open",()=>c.send(ed.value));
     });
   }
-  if(mode==="join"){
+  if(m==="join"){
     const id=prompt("ID комнаты:");
     peer=new Peer();
     peer.on("open",()=>{
       const c=peer.connect(id);
-      c.on("data",d=>{ ed.value=d; sync(); });
+      c.on("data",d=>{ed.value=d;highlight()});
       document.getElementById("role").textContent="Роль: VIEWER";
       ed.addEventListener("keydown",e=>e.preventDefault());
     });
   }
 }
+function sendAll(v){conns.forEach(c=>c.send(v))}
 
-function broadcast(val){
-  conns.forEach(c=>c.send(val));
-}
+/* ---------- САМЫЙ УМНЫЙ LOCAL AI ---------- */
+function smartAI(){
+  const q=prompt("Что нужно сделать?");
+  let code=ed.value;
 
-/* ---------- Local AI ---------- */
-function localAI(){
-  const q=prompt("Что сделать?");
-  let r="# Не понял 🤖";
-  if(q.includes("цикл")) r="for i in range(5):\n    print(i)";
-  if(q.includes("функ")) r="def func(x):\n    return x*2";
-  if(q.includes("класс")) r="class Test:\n    def __init__(self):\n        pass";
-  if(isHost){ ed.value=r; sync(); broadcast(r); }
+  if(q.match(/исправ/i)){
+    code=code.replace(/print (.+)/g,"print(\\1)");
+  }
+  else if(q.match(/функц/i)){
+    code+="\n\ndef my_func(x):\n    return x*2\n";
+  }
+  else if(q.match(/класс/i)){
+    code+="\n\nclass MyClass:\n    def __init__(self):\n        pass\n";
+  }
+  else if(q.match(/сорт/i)){
+    code+="\n\nnums = sorted(nums)\n";
+  }
+  else if(q.match(/фиб/i)){
+    code+="\n\ndef fib(n):\n    a,b=0,1\n    for _ in range(n):\n        a,b=b,a+b\n    return a\n";
+  }
+  else{
+    code+="\n# AI: не понял запрос\n";
+  }
+
+  ed.value=code;
+  highlight();
+  if(isHost)sendAll(code);
 }
 
 /* ---------- Python ---------- */
 async function runCode(){
   out.textContent=">>> Запуск...\n";
   try{
-    await py.runPythonAsync(`
-import sys,io
-sys.stdout=io.StringIO()
-`);
+    await py.runPythonAsync(`import sys,io;sys.stdout=io.StringIO()`);
     await py.runPythonAsync(ed.value);
     out.textContent+=py.runPython("sys.stdout.getvalue()");
-  }catch(e){ out.textContent+=e; }
+  }catch(e){out.textContent+=e}
 }
 </script>
 
