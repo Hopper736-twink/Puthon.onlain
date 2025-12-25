@@ -1,128 +1,207 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<title>Python Live Studio</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+&lt;!DOCTYPE html&gt;
+&lt;html lang="ru"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;title&gt;Python Live Studio&lt;/title&gt;
+    &lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;
 
-<style>
-:root {
-  --bg:#0d1117; --panel:#161b22; --border:#30363d;
-  --text:#c9d1d9; --accent:#58a6ff; --green:#2ea043;
-}
-* { box-sizing:border-box }
-body {
-  margin:0; background:var(--bg); color:var(--text);
-  font-family:monospace; height:100vh; display:flex; flex-direction:column;
-}
-header {
-  background:var(--panel); padding:8px; display:flex; gap:6px;
-  border-bottom:1px solid var(--border);
-}
-button {
-  flex:1; padding:10px; border:none; border-radius:6px;
-  font-weight:bold; color:white; cursor:pointer;
-}
-.run{background:var(--green)}
-.ai{background:var(--accent)}
-.net{background:#f39c12}
+    &lt;!-- CodeMirror (подсветка кода) --&gt;
+    &lt;link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css"&gt;
+    &lt;script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"&gt;&lt;/script&gt;
+    &lt;script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"&gt;&lt;/script&gt;
+    &lt;script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/closebrackets.min.js"&gt;&lt;/script&gt;
+    &lt;script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/addon/edit/matchbrackets.min.js"&gt;&lt;/script&gt;
 
-#status {
-  font-size:12px; padding:6px 10px; border-bottom:1px solid var(--border);
-  display:flex; justify-content:space-between;
-}
-#editor {
-  flex:1; width:100%; resize:none; border:none; outline:none;
-  padding:14px; background:var(--bg); color:var(--text);
-  font-size:15px; line-height:1.5;
-}
-#log {
-  height:22%; background:#000; color:#3aff3a;
-  padding:10px; font-size:13px; overflow:auto;
-}
-</style>
-</head>
+    &lt;!-- PeerJS (p2p соединения) --&gt;
+    &lt;script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"&gt;&lt;/script&gt;
 
-<body>
+    &lt;!-- Pyodide (интерпретатор Python в браузере) --&gt;
+    &lt;script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"&gt;&lt;/script&gt;
 
-<header>
-  <button class="run" onclick="run()">▶ RUN</button>
-  <button class="ai" onclick="localAI()">🤖 ПОМОЩЬ</button>
-  <button class="net" onclick="connect()">🌐 СЕТЬ</button>
-</header>
+    &lt;style&gt;
+        :root {
+            --bg:#0d1117; --panel:#161b22; --border:#30363d;
+            --text:#c9d1d9; --accent:#58a6ff; --green:#2ea043;
+        }
+        *{box-sizing:border-box}
+        body{
+            margin:0; background:var(--bg); color:var(--text);
+            font-family:monospace; height:100vh; display:flex; flex-direction:column;
+        }
+        header{
+            background:var(--panel); padding:8px; display:flex; gap:6px;
+            border-bottom:1px solid var(--border);
+        }
+        button{
+            flex:1; padding:10px; border:none; border-radius:6px;
+            font-weight:bold; color:white; cursor:pointer;
+        }
+        .run{background:var(--green)}
+        .ai{background:var(--accent)}
+        .net{background:#f39c12}
+        #status{
+            font-size:12px; padding:6px 10px; border-bottom:1px solid var(--border);
+            display:flex; justify-content:space-between;
+        }
+        #editor{height:40vh;}
+        #log{
+            flex:1; background:#000; color:#3aff3a;
+            padding:10px; font-size:13px; overflow:auto; white-space:pre-wrap;
+        }
+    &lt;/style&gt;
+&lt;/head&gt;
 
-<div id="status">
-  <span id="sid">ID: —</span>
-  <span id="role">Роль: SOLO</span>
-</div>
+&lt;body&gt;
+    &lt;header&gt;
+        &lt;button class="run" onclick="runCode()"&gt;▶ RUN&lt;/button&gt;
+        &lt;button class="ai" onclick="localAI()"&gt;🤖 ПОМОЩЬ&lt;/button&gt;
+        &lt;button class="net" onclick="openConnection()"&gt;🌐 СЕТЬ&lt;/button&gt;
+    &lt;/header&gt;
 
-<textarea id="editor">print("Hello Python Live")</textarea>
-<div id="log">Готово.</div>
+    &lt;div id="status"&gt;
+        &lt;span id="sid"&gt;ID: —&lt;/span&gt;
+        &lt;span id="role"&gt;Роль: SOLO&lt;/span&gt;
+    &lt;/div&gt;
 
-<script>
-let peer, conn;
-let isHost = false;
-const ed = document.getElementById("editor");
-const log = document.getElementById("log");
+    &lt;textarea id="editor"&gt;print("Hello Python Live")&lt;/textarea&gt;
 
-function println(t){ log.textContent += "\n" + t; log.scrollTop=9999 }
+    &lt;div id="log"&gt;Готово.&lt;/div&gt;
+&lt;script&gt;
+        // ---------- Инициализация CodeMirror ----------
+        const textarea = document.getElementById('editor');
+        const editor = CodeMirror.fromTextArea(textarea, {
+            mode: 'python',
+            theme: 'default',
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 4,
+            tabSize: 4,
+            indentWithTabs: false
+        });
+        editor.setSize('100%', '40vh');
 
-peer = new Peer();
+        // ---------- PeerJS ----------
+        let peer = new Peer();
+        let conn = null;
+        let isHost = false;
 
-peer.on("open", id=>{
-  document.getElementById("sid").textContent = "ID: " + id;
-});
+        peer.on('open', id => {
+            document.getElementById('sid').textContent = 'ID: ' + id;
+        });
 
-peer.on("connection", c=>{
-  if(conn) return;
-  conn = c;
-  isHost = true;
-  document.getElementById("role").textContent = "Роль: HOST";
-  conn.on("data", d=> ed.value = d);
-});
+        peer.on('connection', c => {
+            if (conn) return;               // уже соединены
+            conn = c;
+            isHost = true;
+            document.getElementById('role').textContent = 'Роль: HOST';
+            syncIncoming();
+        });
 
-ed.addEventListener("input", ()=>{
-  if(isHost && conn) conn.send(ed.value);
-});
+        function openConnection() {
+            if (isHost) return; // хост уже подключён к клиенту
+            const hostId = prompt('Введите ID хоста:');
+            if (!hostId) return;
+            conn = peer.connect(hostId);
+            conn.on('open', () => {
+                document.getElementById('role').textContent = 'Роль: CLIENT';
+                syncIncoming();
+                // сразу отправляем текущий код, чтобы клиент увидел актуальное состояние
+                conn.send(editor.getValue());
+            });
+        }
 
-function connect(){
-  if(isHost) return;
-  const id = prompt("ID хоста:");
-  if(!id) return;
-  conn = peer.connect(id);
-  conn.on("open", ()=>{
-    document.getElementById("role").textContent = "Роль: CLIENT";
-    conn.on("data", d=> ed.value = d);
-  });
-}
+        function syncIncoming() {
+            conn.on('data', data => {
+                // получаем только строку – полный код
+                if (typeof data === 'string') {
+                    editor.setValue(data);
+                }
+            });
+        }
 
-function run(){
-  log.textContent = "▶ Запуск невозможен без сервера\n(Это редактор, не интерпретатор)";
-}
+        // Отправляем изменения в реальном времени
+        editor.on('change', () => {
+            if (conn && isHost) {
+                conn.send(editor.getValue());
+            }
+        });
 
-function localAI(){
-  let code = ed.value;
+        // ---------- Локальный AI ----------
+        function localAI() {
+            let code = editor.getValue();
 
-  // авто-отступы
-  code = code.replace(/:\n(\S)/g, ":\n    $1");
+            // 1. Авто‑отступы после двоеточия
+            code = code.replace(/:\s*\n([^\s])/g, ':\n    $1');
 
-  // if без двоеточия
-  code = code.replace(/^(\s*)(if|for|while|def)\s+(.+)$/gm,
-    "$1$2 $3:");
+            // 2. Добавляем двоеточие, если его нет (if, for, while, def, class)
+            code = code.replace(/^(\s*)(if|for|while|def|class)\s+([^\:]+)$/gm,
+                (m, p1, p2, p3) => `${p1}${p2} ${p3.trim()}:`);
 
-  // комментарий → pass
-  code = code.replace(/#\s*todo/gi, "pass");
+            // 3. Замена # TODO → pass
+            code = code.replace(/#\s*todo/gi, 'pass');
 
-  // пустые def
-  code = code.replace(/def\s+(\w+)\(.*?\):\n(\s*)$/gm,
-    "def $1():\n$2    pass\n");
+            // 4. Пустые функции → добавить pass
+            code = code.replace(/def\s+(\w+)\(.*?\):\s*\n(\s*)$/gm,
+                (m, name, indent) => `def ${name}():\n${indent}    pass\n`);
 
-  ed.value = code;
-  if(isHost && conn) conn.send(code);
-  println("🤖 ИИ: код улучшен");
-}
-</script>
+            // 5. Добавляем шаблон запуска скрипта, если его нет
+            if (!/if\s+__name__\s*==\s*["']__main__["']\s*:/.test(code)) {
+                code += `\n\nif __name__ == "__main__":\n    # ваш код здесь\n`;
+            }
 
-</body>
-</html>
+            editor.setValue(code);
+            if (conn && isHost) conn.send(code);
+            logPrint('🤖 ИИ: код улучшен');
+        }
+
+        // ---------- Выполнение кода ----------
+        let pyodideReady = false;
+        let pyodide = null;
+
+        async function loadPyodide() {
+            logPrint('⏳ Загрузка Pyodide...');
+            try {
+                pyodide = await loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/" });
+                pyodideReady = true;
+                logPrint('✅ Pyodide готов');
+            } catch (e) {
+                logPrint('❌ Ошибка загрузки Pyodide: ' + e);
+            }
+        }
+        loadPyodide();
+async function runCode() {
+            if (!pyodideReady) {
+                logPrint('⚙️ Pyodide ещё не готов, подождите...');
+                return;
+            }
+            const code = editor.getValue();
+            logPrint('▶ Запуск кода...');
+            try {
+                // Перехватываем stdout / stderr
+                let stdout = '';
+                let stderr = '';
+                pyodide.setStdout({
+                    batched: (msg) => { stdout += msg; }
+                });
+                pyodide.setStderr({
+                    batched: (msg) => { stderr += msg; }
+                });
+                await pyodide.runPythonAsync(code);
+                if (stdout) logPrint('🖨️ Вывод:\n' + stdout);
+                if (stderr) logPrint('❗ Ошибки:\n' + stderr);
+            } catch (err) {
+                logPrint('❌ Исключение:\n' + err);
+            }
+        }
+
+        // ---------- Лог выводов ----------
+        const logDiv = document.getElementById('log');
+        function logPrint(msg) {
+            const time = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${time}] ${msg}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+    &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt
